@@ -49,13 +49,18 @@ jobs:
                 dir="downloads"
                 file="$dir/${pkg}.ndjson"
                 mkdir -p "$dir"
-                # read current count (default 0), increment, write back
+                # read current count (default 0), increment, write back.
+                # Use full if-blocks (not "[ ] && ...") so nothing returns a
+                # bare non-zero exit code that would trip `set -e`.
                 current=0
                 if [ -f "$file" ]; then
                   current=$(tr -cd '0-9' < "$file")
-                  [ -z "$current" ] && current=0
+                  if [ -z "$current" ]; then
+                    current=0
+                  fi
                 fi
-                printf '%s' "$(( current + 1 ))" > "$file"
+                next=$(( current + 1 ))
+                printf '%s' "$next" > "$file"
                 ;;
               *)
                 dir="misc"
