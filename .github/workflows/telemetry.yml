@@ -9,13 +9,55 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Append telemetry
+
+      - name: Route telemetry events
         env:
           DATA: ${{ github.event.client_payload.data }}
         run: |
-          printf '%s' "$DATA" >> telemetry.ndjson
+          set -euo pipefail
+
+          sanitize() {
+            # keep letters, digits, dot, underscore, hyphen; replace the rest with _
+            printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'
+          }
+
+          # Process each NDJSON line from the payload
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+
+            reqType=$(printf '%s' "$line"   | jq -r '.data.reqType // "unknown"')
+            packageId=$(printf '%s' "$line" | jq -r '.data.packageId // "unknown"')
+            userId=$(printf '%s' "$line"    | jq -r '.data.userId // "unknown"')
+
+            pkg=$(sanitize "$packageId")
+            usr=$(sanitize "$userId")
+
+            case "$reqType" in
+              like)
+                dir="likes"
+                file="$dir/${pkg}.ndjson"
+                ;;
+              save)
+                dir="saves"
+                file="$dir/${pkg}__${usr}.ndjson"
+                ;;
+              *)
+                dir="misc"
+                file="$dir/${pkg}.ndjson"
+                ;;
+            esac
+
+            mkdir -p "$dir"
+            printf '%s\n' "$line" >> "$file"
+          done <<< "$DATA"
+
+          # Commit only if something changed
           git config user.name  "telemetry-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add telemetry.ndjson
-          git commit -m "telemetry: ${{ github.event.client_payload.count }} events"
-          git push
+          git add likes saves misc 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "telemetry: ${{ github.event.client_payload.count }} events"
+            git push
+          fi
