@@ -36,25 +36,40 @@ jobs:
               like)
                 dir="likes"
                 file="$dir/${pkg}.ndjson"
+                mkdir -p "$dir"
+                printf '%s\n' "$line" >> "$file"
                 ;;
               save)
                 dir="saves"
                 file="$dir/${pkg}__${usr}.ndjson"
+                mkdir -p "$dir"
+                printf '%s\n' "$line" >> "$file"
+                ;;
+              download)
+                dir="downloads"
+                file="$dir/${pkg}.ndjson"
+                mkdir -p "$dir"
+                # read current count (default 0), increment, write back
+                current=0
+                if [ -f "$file" ]; then
+                  current=$(tr -cd '0-9' < "$file")
+                  [ -z "$current" ] && current=0
+                fi
+                printf '%s' "$(( current + 1 ))" > "$file"
                 ;;
               *)
                 dir="misc"
                 file="$dir/${pkg}.ndjson"
+                mkdir -p "$dir"
+                printf '%s\n' "$line" >> "$file"
                 ;;
             esac
-
-            mkdir -p "$dir"
-            printf '%s\n' "$line" >> "$file"
           done <<< "$DATA"
 
           # Commit only if something changed
           git config user.name  "telemetry-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add likes saves misc 2>/dev/null || true
+          git add likes saves downloads misc 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
