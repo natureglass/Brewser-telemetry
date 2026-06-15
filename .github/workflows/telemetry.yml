@@ -73,6 +73,41 @@ jobs:
             esac
           done <<< "$DATA"
 
+      - name: Aggregate ratings
+        run: |
+          set -euo pipefail
+
+          # Build ratings.json from all likes/*.ndjson files.
+          # For each package, count "stars" events and compute the average rating.
+          out="ratings.json"
+
+          if [ ! -d likes ] || [ -z "$(ls -A likes 2>/dev/null)" ]; then
+            echo "No likes data; skipping aggregation."
+            exit 0
+          fi
+
+          # Concatenate every likes file, keep only star ratings, then group
+          # by packageId computing count + average (rounded to 2 decimals).
+          cat likes/*.ndjson \
+            | jq -c 'select(.data.data[0] == "stars")
+                     | {packageId: .data.packageId, stars: (.data.data[1] // 0)}' \
+            | jq -s '
+                group_by(.packageId)
+                | map({
+                    packageId: .[0].packageId,
+                    count: length,
+                    average: ((map(.stars) | add) / length
+                              | . * 100 | round / 100)
+                  })
+                | sort_by(.packageId)
+              ' > "$out"
+
+          echo "Wrote $out:"
+          cat "$out"
+
+      - name: Commit changes
+        run: |
+          set -euo pipefail
           # Commit only if something changed.
           # Use "git add -A" (stage everything) rather than naming folders:
           # naming a folder that does not exist makes git add fail with a
