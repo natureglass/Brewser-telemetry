@@ -105,6 +105,42 @@ jobs:
           echo "Wrote $out:"
           cat "$out"
 
+      - name: Aggregate downloads
+        run: |
+          set -euo pipefail
+
+          # Build downloads.json from all downloads/*.ndjson files.
+          # Each file is named <sanitizedPackageId>.ndjson and contains a
+          # single integer count. Produce an object: { "<packageId>": <count> }.
+          out="downloads.json"
+
+          if [ ! -d downloads ] || [ -z "$(ls -A downloads 2>/dev/null)" ]; then
+            echo "No downloads data; skipping aggregation."
+            exit 0
+          fi
+
+          # For each file emit "packageId<TAB>count", then let jq fold the
+          # lines into a single object. tr -cd '0-9' strips any stray
+          # whitespace/newline so the count is always a clean integer.
+          for f in downloads/*.ndjson; do
+            [ -e "$f" ] || continue
+            pkg=$(basename "$f" .ndjson)
+            count=$(tr -cd '0-9' < "$f")
+            if [ -z "$count" ]; then
+              count=0
+            fi
+            printf '%s\t%s\n' "$pkg" "$count"
+          done \
+            | jq -R -s '
+                split("\n")
+                | map(select(length > 0) | split("\t"))
+                | map({key: .[0], value: (.[1] | tonumber)})
+                | from_entries
+              ' > "$out"
+
+          echo "Wrote $out:"
+          cat "$out"
+
       - name: Commit changes
         run: |
           set -euo pipefail
